@@ -37,11 +37,12 @@ data_transforms = {
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
 }
-
-data_dir = 'hymenoptera_data'
+classes = 5
+data_dir = './'
 image_datasets = { x: ImageFolder(os.path.join(data_dir, x),
                                         data_transforms[x])
-                   for x in ['train', 'val']}
+                   for x in ['train', 'val']
+                 }
 
 
 def load_data (train_datapoints=None, val_datapoints=70):
@@ -53,10 +54,11 @@ def load_data (train_datapoints=None, val_datapoints=70):
     dataset_indicies = { x: iter(torch.randperm(len(image_datasets[x])).numpy())
                          for x in ['train', 'val'] }
 
-    indicies = { x: { 0: [], 1: [] }
+    indicies = { x: { 0: [], 1: [], 2: [], 3: [], 4: [] }
                  for x in ['train', 'val'] }
 
     # Run through every datapoint.
+    # TODO: Fix
     for x in ['train', 'val']:
         for idx in dataset_indicies[x]:
             _, label = image_datasets[x][idx]
@@ -128,9 +130,16 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer,
                     if method == "argmax":
                         # Argmax:
                         _, preds = torch.max(outputs, 1)
-                    else:
+                    
+                    if method == "sampling":
                         # Sampling:
                         preds = torch.flatten(torch.multinomial(torch.softmax(outputs, 1), 1))
+                    
+                    if method == "threshold>80":
+                      threshold = 0.8
+                      tmp = torch.softmax(outputs, 1).clone().detach().cpu()
+                      _, preds = torch.max(tmp.apply_(lambda x: x if x > threshold else 0), 1)
+                      preds = preds.cuda()
 
                     loss = criterion(outputs, labels)
 
@@ -162,7 +171,7 @@ def train_model(model, dataloaders, dataset_sizes, criterion, optimizer,
 
     # load best model weights
     model.load_state_dict(best_model_wts)
-    return model, best_acc
+    return model, best_acc, epoch_acc
 
 
 def finetune (train_datapoints=None, num_epochs=None, method=None):
@@ -170,7 +179,7 @@ def finetune (train_datapoints=None, num_epochs=None, method=None):
     """
     model_ft    = models.resnet18(pretrained=True)
     num_ftrs    = model_ft.fc.in_features
-    model_ft.fc = nn.Linear(num_ftrs, 2)
+    model_ft.fc = nn.Linear(num_ftrs, classes)
 
     model_ft = model_ft.to(device)
 
@@ -185,7 +194,7 @@ def finetune (train_datapoints=None, num_epochs=None, method=None):
 
     dataloaders, dataset_sizes = load_data(train_datapoints=train_datapoints)
 
-    model_ft, best_acc = train_model( model_ft
+    model_ft, best_acc, epoch_acc = train_model( model_ft
                                     , dataloaders
                                     , dataset_sizes
                                     , criterion
@@ -194,7 +203,7 @@ def finetune (train_datapoints=None, num_epochs=None, method=None):
                                     , num_epochs=num_epochs
                                     , method=method
                                     )
-    return best_acc
+    return best_acc, epoch_acc
 
 
 def specialise (train_datapoints=None, num_epochs=None, method=None):
@@ -206,7 +215,7 @@ def specialise (train_datapoints=None, num_epochs=None, method=None):
 
     # Parameters of newly constructed modules have requires_grad=True by default
     num_ftrs = model_conv.fc.in_features
-    model_conv.fc = nn.Linear(num_ftrs, 2)
+    model_conv.fc = nn.Linear(num_ftrs, classes)
 
     model_conv = model_conv.to(device)
 
@@ -222,7 +231,7 @@ def specialise (train_datapoints=None, num_epochs=None, method=None):
 
     dataloaders, dataset_sizes = load_data(train_datapoints=train_datapoints)
 
-    model_ft, best_acc = train_model( model_conv
+    model_ft, best_acc, epoch_acc = train_model( model_conv
                                     , dataloaders
                                     , dataset_sizes
                                     , criterion
@@ -231,15 +240,18 @@ def specialise (train_datapoints=None, num_epochs=None, method=None):
                                     , num_epochs=num_epochs
                                     , method=method
                                     )
-    return best_acc
+    return best_acc, epoch_acc
 
 
 
-if __name__ == "__main__":
-    epochs  = [1, 2, 5, 10, 20]
-    sizes   = [1, 2, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
-    seeds   = [1, 2, 3, 4, 5]
-    methods = ["argmax", "sampling"]
+def go():
+    # epochs  = [1, 2, 5, 10, 20]
+    epochs  = [10]
+    # sizes   = [1, 2, 5, 10, 20, 50, 100, 200, 400, 500]
+    sizes   = [1, 3, 5, 50, 300]
+    # seeds   = [1, 2, 3, 4, 5]
+    seeds   = [1, 2]
+    methods = ["threshold>80", "argmax", "sampling"]
 
     results = []
 
@@ -253,15 +265,17 @@ if __name__ == "__main__":
                     print(f"size = {size}, epochs = {e}, seed = {seed}, method = {method}")
                     print("Fine-tuning...")
                     print("==============")
-                    ft_acc = finetune(train_datapoints=size, num_epochs=e, method=method)
+                    ft_acc, ft_epoch_acc = finetune(train_datapoints=size, num_epochs=e, method=method)
 
                     print("Specialising...")
                     print("===============")
-                    sp_acc = specialise(train_datapoints=size, num_epochs=e, method=method)
+                    sp_acc, sp_epoch_acc = specialise(train_datapoints=size, num_epochs=e, method=method)
 
                     data = { "epochs": e
                            , "size":   size
                            , "ft_acc": ft_acc.cpu().numpy()
+                           , "ft_epoch_acc": ft_epoch_acc.cpu().numpy()
+                           , "sp_epoch_acc": sp_epoch_acc.cpu().numpy()
                            , "sp_acc": sp_acc.cpu().numpy()
                            , "seed": seed
                            , "method": method
@@ -272,4 +286,5 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(results)
     df.to_csv("big-run-all-results.csv", index=False)
+
 
