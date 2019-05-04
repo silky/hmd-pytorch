@@ -246,10 +246,9 @@ def specialise (train_datapoints=None, num_epochs=None, method=None):
 
 def go():
     # epochs  = [1, 2, 5, 10, 20]
-    epochs  = [10]
-    # sizes   = [1, 2, 5, 10, 20, 50, 100, 200, 400, 500]
-    sizes   = [1, 3, 5, 50, 300]
-    # seeds   = [1, 2, 3, 4, 5]
+    epochs  = [10] # For YOW Data Talk
+    
+    sizes   = [1, 3, 5, 50, 100, 300, 600] # For YOW Data Talk
     seeds   = [1, 2]
     methods = ["threshold>80", "argmax", "sampling"]
 
@@ -267,16 +266,16 @@ def go():
                     print("==============")
                     ft_acc, ft_epoch_acc = finetune(train_datapoints=size, num_epochs=e, method=method)
 
-                    print("Specialising...")
-                    print("===============")
-                    sp_acc, sp_epoch_acc = specialise(train_datapoints=size, num_epochs=e, method=method)
+#                    print("Specialising...")
+#                    print("===============")
+#                    sp_acc, sp_epoch_acc = specialise(train_datapoints=size, num_epochs=e, method=method)
 
                     data = { "epochs": e
                            , "size":   size
                            , "ft_acc": ft_acc.cpu().numpy()
                            , "ft_epoch_acc": ft_epoch_acc.cpu().numpy()
-                           , "sp_epoch_acc": sp_epoch_acc.cpu().numpy()
-                           , "sp_acc": sp_acc.cpu().numpy()
+#                           , "sp_epoch_acc": sp_epoch_acc.cpu().numpy()
+#                           , "sp_acc": sp_acc.cpu().numpy()
                            , "seed": seed
                            , "method": method
                            }
@@ -285,6 +284,6 @@ def go():
                     print()
 
     df = pd.DataFrame(results)
-    df.to_csv("big-run-all-results.csv", index=False)
+    df.to_csv("yow-data-results.csv", index=False)
 
-
+           
